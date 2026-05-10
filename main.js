@@ -22,108 +22,139 @@ class MainScene extends Phaser.Scene {
 	create() {
 		const worldSize = 10000;
 		
-		// Set the physics world and camera boundaries to 10,000 x 10,000
+		// Set the physics world and main camera boundaries to 10,000 x 10,000
 		this.physics.world.setBounds(0, 0, worldSize, worldSize);
 		this.cameras.main.setBounds(0, 0, worldSize, worldSize);
 		
 		const screenW = this.scale.width;
 		const screenH = this.scale.height;
+		const centerX = screenW / 2;
+		const centerY = screenH / 2;
+		
+		// --- CAMERA SETUP ---
+		// Create a new camera specifically for the backgrounds
+		this.bgCamera = this.cameras.add(0, 0, screenW, screenH);
+		this.bgCamera.setBounds(0, 0, worldSize, worldSize);
+		
+		// Move bgCamera to the back of the camera list so it renders behind the main camera
+		this.cameras.cameras.unshift(this.cameras.cameras.pop());
 		
 		// --- PARALLAX BACKGROUND SETUP ---
-		// For repeating backgrounds, we use tileSprites.
-		// setScrollFactor(0) locks them to the camera so they never leave the screen.
-		this.bgGalaxy = this.add.tileSprite(0, 0, screenW, screenH, 'galaxy').setOrigin(0).setScrollFactor(0);
-		this.bgStars = this.add.tileSprite(0, 0, screenW, screenH, 'stars').setOrigin(0).setScrollFactor(0);
+		// Changed origin to 0.5 and positioned at the center of the screen.
+		// This ensures that when the camera zooms out, the background expands equally in all directions.
+		this.bgGalaxy = this.add.tileSprite(centerX, centerY, screenW, screenH, 'galaxy').setOrigin(0.5).setScrollFactor(0).setDepth(0);
+		this.bgStars = this.add.tileSprite(centerX, centerY, screenW, screenH, 'stars').setOrigin(0.5).setScrollFactor(0).setDepth(1);
 		
-		// Planets are single images placed in the world.
-		// setScrollFactor(0.3) makes them move slower than the camera, creating depth.
-		this.add.image(3000, 3000, 'planet1').setScrollFactor(0.3);
-		this.add.image(7000, 6000, 'planet2').setScrollFactor(0.5);
-		
-		// --- SPACESHIP SETUP ---
-		// Place ship in the exact middle of the 10,000 x 10,000 world
-		this.ship = this.physics.add.sprite(worldSize / 2, worldSize / 2, 'ship');
-		this.ship.setCollideWorldBounds(true);
-		this.ship.setDepth(10); // Ensures ship renders above backgrounds
-		
-		// Make the camera follow the ship. This keeps the ship "stationary" in the middle of the screen.
-		this.cameras.main.startFollow(this.ship);
+		// Planets
+		this.planet1 = this.add.image(3000, 3000, 'planet1').setScrollFactor(0.3).setDepth(4);
+		this.planet2 = this.add.image(7000, 6000, 'planet2').setScrollFactor(0.5).setDepth(5);
 		
 		// --- OVERLAYS SETUP ---
-		// Add foreground overlays on top of the ship (depth 20)
-		this.bgOverlay1 = this.add.tileSprite(0, 0, screenW, screenH, 'overlay1').setOrigin(0).setScrollFactor(0).setDepth(20);
-		this.bgOverlay2 = this.add.tileSprite(0, 0, screenW, screenH, 'overlay2').setOrigin(0).setScrollFactor(0).setDepth(20);
+		// Center overlays as well to prevent black padding on zoom out
+		this.bgOverlay1 = this.add.tileSprite(centerX, centerY, screenW, screenH, 'overlay1').setOrigin(0.5).setScrollFactor(0).setDepth(2);
+		this.bgOverlay2 = this.add.tileSprite(centerX, centerY, screenW, screenH, 'overlay2').setOrigin(0.5).setScrollFactor(0).setDepth(3);
 		
-		// Make overlays slightly transparent so we can see the game
 		this.bgOverlay1.setAlpha(0.3);
 		this.bgOverlay2.setAlpha(0.3);
+		
+		// --- SPACESHIP SETUP ---
+		this.ship = this.physics.add.sprite(worldSize / 2, worldSize / 2, 'ship');
+		this.ship.setCollideWorldBounds(true);
+		this.ship.setDepth(20); // Ensures ship renders above everything
+		
+		// Make both cameras follow the ship to keep it centered
+		this.cameras.main.startFollow(this.ship);
+		this.bgCamera.startFollow(this.ship);
 		
 		// --- ASTEROIDS SETUP ---
 		this.asteroids = this.physics.add.group();
 		
 		for (let i = 0; i < 50; i++) {
-			// Spawn randomly across the 10,000 x 10,000 area
 			let x = Phaser.Math.Between(0, worldSize);
 			let y = Phaser.Math.Between(0, worldSize);
 			
 			let asteroid = this.asteroids.create(x, y, 'asteroid');
-			
-			// Random Size (Scale between 0.1x and 0.3x)
 			asteroid.setScale(Phaser.Math.FloatBetween(0.1, 0.3));
-			
-			// Random Movement Speed
 			asteroid.setVelocity(Phaser.Math.Between(-150, 150), Phaser.Math.Between(-150, 150));
-			
-			// Random Spin (Angular Velocity)
 			asteroid.setAngularVelocity(Phaser.Math.Between(-80, 80));
-			
-			// Asteroids bounce off the edges of the 10,000x10,000 world
 			asteroid.setCollideWorldBounds(true);
 			asteroid.setBounce(1);
+			asteroid.setDepth(10); // Asteroids behind ship, but above backgrounds
 		}
 		
+		// --- CAMERA IGNORE LISTS ---
+		// Main camera ignores backgrounds and planets so they don't zoom 1:1 with the game objects
+		this.cameras.main.ignore([this.bgGalaxy, this.bgStars, this.bgOverlay1, this.bgOverlay2, this.planet1, this.planet2]);
+		
+		// Background camera ignores ship and asteroids so they don't render twice
+		this.bgCamera.ignore([this.ship, ...this.asteroids.getChildren()]);
+		
 		// --- SIMPLE RECTANGULAR COLLISION ---
-		// Phaser Arcade physics uses AABB (Rectangular) collision by default
 		this.physics.add.collider(this.ship, this.asteroids, this.handleCollision, null, this);
 		
 		// --- INPUT: MOUSE CLICK TO MOVE ---
 		this.input.on('pointerdown', (pointer) => {
-			// pointer.worldX/Y gets the exact coordinates in the 10,000px area
 			const targetX = pointer.worldX;
 			const targetY = pointer.worldY;
-			
-			// Calculate angle between ship and mouse click
 			const angleInRadians = Phaser.Math.Angle.Between(this.ship.x, this.ship.y, targetX, targetY);
-			
-			// Rotate the ship.
-			// We add Math.PI / 2 (90 degrees) because the original PNG faces UP.
 			this.ship.rotation = angleInRadians + (Math.PI / 2);
-			
-			// Move ship towards the click at 400 pixels per second
 			this.physics.moveTo(this.ship, targetX, targetY, 400);
+		});
+		
+		// --- INPUT: MOUSE WHEEL TO ZOOM ---
+		this.targetZoom = 1; // Starting size is the maximum zoom
+		this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+			// deltaY > 0 is scroll down (zoom out), deltaY < 0 is scroll up (zoom in)
+			this.targetZoom -= deltaY * 0.001;
+			
+			// Clamp zoom (1 is max zoom, 0.2 is an arbitrary min zoom limit)
+			if (this.targetZoom > 1) this.targetZoom = 1;
+			if (this.targetZoom < 0.2) this.targetZoom = 0.2;
 		});
 		
 		// Handle Window Resizing
 		this.scale.on('resize', (gameSize) => {
 			const width = gameSize.width;
 			const height = gameSize.height;
-			this.bgGalaxy.setSize(width, height);
-			this.bgStars.setSize(width, height);
-			this.bgOverlay1.setSize(width, height);
-			this.bgOverlay2.setSize(width, height);
+			
+			// Update the background camera size
+			this.bgCamera.setSize(width, height);
+			
+			// Keep the backgrounds centered when the window is resized
+			this.bgGalaxy.setPosition(width / 2, height / 2);
+			this.bgStars.setPosition(width / 2, height / 2);
+			this.bgOverlay1.setPosition(width / 2, height / 2);
+			this.bgOverlay2.setPosition(width / 2, height / 2);
 		});
 	}
 	
 	handleCollision(ship, asteroid) {
-		// What happens when the ship hits an asteroid (Simple rectangular bounce)
 		ship.setVelocity(0, 0);
 		console.log("Crash!");
 	}
 	
 	update() {
+		// --- ZOOM INTERPOLATION ---
+		// Smoothly zoom the main camera (affects ship and asteroids)
+		this.cameras.main.zoom += (this.targetZoom - this.cameras.main.zoom) * 0.1;
+		
+		// Background camera resizes much slower to simulate depth
+		const bgZoom = 1 - (1 - this.cameras.main.zoom) * 0.1;
+		this.bgCamera.setZoom(bgZoom);
+		
+		// Update tileSprite sizes to prevent black borders when bgCamera zooms out.
+		// Because the origin is now 0.5, increasing the size expands them equally in all directions.
+		const screenW = this.scale.width;
+		const screenH = this.scale.height;
+		const invBgZoom = 1 / bgZoom;
+		
+		this.bgGalaxy.setSize(screenW * invBgZoom, screenH * invBgZoom);
+		this.bgStars.setSize(screenW * invBgZoom, screenH * invBgZoom);
+		this.bgOverlay1.setSize(screenW * invBgZoom, screenH * invBgZoom);
+		this.bgOverlay2.setSize(screenW * invBgZoom, screenH * invBgZoom);
+		
 		// --- PARALLAX TILE SCROLLING ---
-		// As the camera moves, we shift the texture of the backgrounds to simulate flying.
-		// Lower numbers = farther away (moves slower)
+		// Use main camera scroll for the parallax effect
 		const camScrollX = this.cameras.main.scrollX;
 		const camScrollY = this.cameras.main.scrollY;
 		
@@ -133,11 +164,11 @@ class MainScene extends Phaser.Scene {
 		this.bgStars.tilePositionX = camScrollX * 0.2;
 		this.bgStars.tilePositionY = camScrollY * 0.2;
 		
-		this.bgOverlay1.tilePositionX = camScrollX * 0.8;
-		this.bgOverlay1.tilePositionY = camScrollY * 0.8;
+		this.bgOverlay1.tilePositionX = camScrollX * 0.25;
+		this.bgOverlay1.tilePositionY = camScrollY * 0.25;
 		
-		this.bgOverlay2.tilePositionX = camScrollX * 0.9;
-		this.bgOverlay2.tilePositionY = camScrollY * 0.9;
+		this.bgOverlay2.tilePositionX = camScrollX * 0.25;
+		this.bgOverlay2.tilePositionY = camScrollY * 0.25;
 	}
 }
 
@@ -145,16 +176,16 @@ class MainScene extends Phaser.Scene {
 const config = {
 	type: Phaser.AUTO,
 	scale: {
-		mode: Phaser.Scale.RESIZE, // Automatically fills the browser window
+		mode: Phaser.Scale.RESIZE,
 		parent: 'game-container',
 		width: '100%',
 		height: '100%'
 	},
 	physics: {
-		default: 'arcade', // Arcade physics handles the rectangular collisions natively
+		default: 'arcade',
 		arcade: {
-			gravity: { y: 0 }, // No gravity in space
-			debug: false // Set to true to see the rectangular hitboxes
+			gravity: { y: 0 },
+			debug: false
 		}
 	},
 	scene: [MainScene]

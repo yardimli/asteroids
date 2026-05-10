@@ -142,8 +142,8 @@ prompts:
 
     ${user_prompt}
 
+    The game is made in phaser 4.1.0.
     Format the output.
-    For PHP use psr-12 standards.
     For javascript use StandardJS but include semicolumns.
     For html use W3C standards.
     Skip files that dont need to be changed and are provided for reference.
